@@ -1,5 +1,7 @@
+mod auth;
 mod health;
 
+pub use auth::{login, logout, extract_token_from_request};
 pub use health::{live, ready};
 
 use axum::http::StatusCode;
@@ -92,8 +94,20 @@ impl IntoResponse for ApiError {
 }
 
 pub fn routes() -> Router<AppState> {
+    use axum::routing::post;
+    
     Router::new()
-    // Health routes are mounted at root level in main.rs
+        // ==========================================================================
+        // AUTHENTICATION ROUTES
+        // ==========================================================================
+        //
+        // These routes handle login/logout with SECURE token delivery:
+        // - Web clients: Token set as httpOnly cookie (XSS-immune)
+        // - Native clients: Token in response body (stored in SecureStore)
+        //
+        // ==========================================================================
+        .route("/auth/login", post(login))
+        .route("/auth/logout", post(logout))
     // Add feature routes here, e.g.:
     // .nest("/users", users::routes())
 }

@@ -1,12 +1,23 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ActivityIndicator, Platform } from 'react-native';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 
 const queryClient = new QueryClient();
 
-const API_BASE_URL = __DEV__ ? 'http://localhost:8000' : 'https://api.yourapp.com';
+function getApiBaseUrl(): string {
+  if (!__DEV__) {
+    return 'https://api.yourapp.com';
+  }
+  // Android Emulator uses 10.0.2.2 to reach host localhost
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:8000';
+  }
+  return 'http://localhost:8000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 function HealthCheck() {
   const { data, isLoading, error } = useQuery({

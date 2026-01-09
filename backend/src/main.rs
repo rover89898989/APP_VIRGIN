@@ -24,9 +24,11 @@ mod config;
 mod db;
 mod features;
 
+use axum::extract::ConnectInfo;
 use axum::http::Method;
 use axum::routing::get;
 use axum::Router;
+use std::net::SocketAddr;
 use config::AppConfig;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
@@ -77,10 +79,41 @@ async fn main() {
         db_pool,
     };
 
+    // ==========================================================================
+    // CORS CONFIGURATION FOR SECURE COOKIE-BASED AUTH
+    // ==========================================================================
+    //
+    // IMPORTANT: When using httpOnly cookies for authentication, we must:
+    // 1. Set `allow_credentials(true)` - allows cookies to be sent cross-origin
+    // 2. Specify exact origins - `Any` origin is NOT allowed with credentials
+    // 3. The frontend must use `withCredentials: true` on requests
+    //
+    // WHY NOT `Any` ORIGIN?
+    // - The browser security model forbids `Access-Control-Allow-Origin: *` 
+    //   when credentials (cookies) are involved
+    // - This prevents malicious sites from making authenticated requests
+    //
+    // DEVELOPMENT vs PRODUCTION:
+    // - Development: Allow localhost origins (multiple ports for Expo)
+    // - Production: Replace with your actual domain(s)
+    //
+    // ==========================================================================
+    let allowed_origins = [
+        "http://localhost:8081".parse().unwrap(),  // Expo web
+        "http://localhost:19006".parse().unwrap(), // Expo web (alt port)
+        "http://127.0.0.1:8081".parse().unwrap(),  // Expo web (IP)
+        "http://10.0.2.2:8081".parse().unwrap(),   // Android emulator
+        // Production: Add your domain here
+        // "https://yourapp.com".parse().unwrap(),
+    ];
+
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(Any)
-        .allow_origin(Any);
+        .allow_origin(allowed_origins)
+        // CRITICAL: This enables cookies to be sent cross-origin
+        // Without this, the browser will NOT include cookies in requests
+        .allow_credentials(true);
 
     let governor_conf = GovernorConfigBuilder::default()
         .per_second(50)
@@ -108,7 +141,8 @@ async fn main() {
 
     info!("backend listening on http://{}", config.addr());
 
-    if let Err(err) = axum::serve(listener, app).await {
+    // Use into_make_service_with_connect_info for rate limiter to extract peer IP
+    if let Err(err) = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await {
         eprintln!("Server error: {err}");
         std::process::exit(1);
     }

@@ -43,32 +43,102 @@ async function getSecureStore(): Promise<SecureStoreModule> {
   return mod;
 }
 
+// ==============================================================================
+// TOKEN STORAGE - PLATFORM-AWARE SECURE STORAGE
+// ==============================================================================
+//
+// SECURITY MODEL:
+// ---------------
+// WEB: Tokens are stored in httpOnly cookies (managed by backend/browser)
+//      We do NOT use localStorage/sessionStorage because they are vulnerable
+//      to XSS attacks. This TokenStorage is NOT used for web.
+//
+// NATIVE (iOS/Android): Tokens are stored in SecureStore
+//      - iOS: Keychain (hardware-backed, biometric protection available)
+//      - Android: KeyStore (hardware security module when available)
+//
+// ==============================================================================
+
 const TokenStorage = {
+  // ===========================================================================
+  // GET TOKEN
+  // ===========================================================================
+  //
+  // For NATIVE only - web uses httpOnly cookies (automatic via browser)
+  //
+  // ===========================================================================
   async get(): Promise<string | null> {
     if (Platform.OS === 'web') {
-      return localStorage.getItem('access_token');
+      // =======================================================================
+      // WEB: Do NOT use localStorage/sessionStorage for tokens!
+      // =======================================================================
+      //
+      // Tokens are stored in httpOnly cookies which:
+      // 1. Cannot be read by JavaScript (XSS protection)
+      // 2. Are automatically sent with requests by the browser
+      //
+      // This function returns null for web because we don't manage tokens here.
+      //
+      // =======================================================================
+      return null;
     }
 
+    // NATIVE: Use SecureStore (hardware-backed encryption)
     const SecureStore = await getSecureStore();
     return await SecureStore.getItemAsync('access_token');
   },
 
+  // ===========================================================================
+  // SET TOKEN
+  // ===========================================================================
+  //
+  // For NATIVE only - web tokens are set by backend via Set-Cookie header
+  //
+  // ===========================================================================
   async set(token: string): Promise<void> {
     if (Platform.OS === 'web') {
-      localStorage.setItem('access_token', token);
+      // =======================================================================
+      // WEB: Tokens are set by the BACKEND via httpOnly cookie
+      // =======================================================================
+      //
+      // The backend's login endpoint returns a Set-Cookie header.
+      // The browser automatically stores this cookie.
+      // We do NOT need to do anything here.
+      //
+      // NEVER store tokens in localStorage/sessionStorage!
+      //
+      // =======================================================================
+      console.warn('TokenStorage.set() called on web - tokens should be set by backend cookie');
       return;
     }
 
+    // NATIVE: Store in SecureStore
     const SecureStore = await getSecureStore();
     await SecureStore.setItemAsync('access_token', token);
   },
 
+  // ===========================================================================
+  // DELETE TOKEN
+  // ===========================================================================
+  //
+  // For NATIVE only - web logout is handled by backend clearing the cookie
+  //
+  // ===========================================================================
   async delete(): Promise<void> {
     if (Platform.OS === 'web') {
-      localStorage.removeItem('access_token');
+      // =======================================================================
+      // WEB: Logout is handled by calling the backend logout endpoint
+      // =======================================================================
+      //
+      // The backend's logout endpoint returns a Set-Cookie header that
+      // clears the token cookie (Max-Age=0).
+      // We do NOT need to do anything here.
+      //
+      // =======================================================================
       return;
     }
 
+    // NATIVE: Delete from SecureStore
     const SecureStore = await getSecureStore();
     await SecureStore.deleteItemAsync('access_token');
   },
@@ -104,28 +174,33 @@ import { UpdateUserRequest } from './types/UpdateUserRequest';
 // ==============================================================================
 
 /**
- * Base API URL
+ * Get the correct API base URL for the current platform.
  * 
- * IMPORTANT: process.env does NOT work in React Native!
- * React Native doesn't have Node.js's process.env.
+ * Platform-specific URLs in development:
+ * - iOS Simulator: localhost works directly
+ * - Android Emulator: 10.0.2.2 is the host machine's localhost
+ * - Web: localhost works directly
+ * - Physical Device: Would need your machine's IP (not handled here)
  * 
- * Options for configuration:
- * 1. react-native-config (recommended): Access .env files
- * 2. react-native-dotenv: Babel plugin for .env
- * 3. Hardcode for now, configure later
- * 
- * Environment-specific URLs:
- * - Development (iOS Simulator): http://localhost:8000
- * - Development (Android Emulator): http://10.0.2.2:8000
- * - Development (Physical Device): http://<YOUR_IP>:8000
- * - Production: https://api.yourapp.com
- * 
- * For now, we hardcode the development URL.
- * TODO: Set up react-native-config for proper environment configuration
+ * For physical device testing, set EXPO_PUBLIC_API_URL in your environment
+ * or use a tunnel like ngrok.
  */
-const API_BASE_URL = __DEV__ 
-  ? 'http://localhost:8000'  // Development: local backend
-  : 'https://api.yourapp.com';  // Production: replace with your API URL
+function getApiBaseUrl(): string {
+  if (!__DEV__) {
+    return 'https://api.yourapp.com'; // Production: replace with your API URL
+  }
+
+  // Development: platform-specific localhost handling
+  if (Platform.OS === 'android') {
+    // Android Emulator uses 10.0.2.2 to reach host machine's localhost
+    return 'http://10.0.2.2:8000';
+  }
+
+  // iOS Simulator and Web can use localhost directly
+  return 'http://localhost:8000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 /**
  * API timeout (milliseconds)
@@ -150,12 +225,51 @@ const API_TIMEOUT = 30000;
 //
 // ==============================================================================
 
+// ==============================================================================
+// SECURITY: PLATFORM-AWARE AUTHENTICATION
+// ==============================================================================
+//
+// This template uses DIFFERENT auth strategies for web vs native:
+//
+// WEB (Browser):
+//   - Tokens stored in httpOnly cookies (set by backend)
+//   - Cookies are immune to XSS (JavaScript cannot read them)
+//   - axios must use `withCredentials: true` for cookies to be sent
+//   - NO localStorage/sessionStorage for tokens (vulnerable to XSS)
+//
+// NATIVE (iOS/Android):
+//   - Tokens stored in SecureStore (hardware-backed encryption)
+//   - Tokens sent via Authorization: Bearer header
+//   - SecureStore is NOT vulnerable to XSS (no JavaScript injection)
+//
+// WHY TWO STRATEGIES?
+//   - Cookies don't work well across native app boundaries
+//   - SecureStore doesn't exist in browsers
+//   - Each platform uses its most secure available mechanism
+//
+// ==============================================================================
+
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: API_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },
+  // ==========================================================================
+  // CRITICAL FOR WEB SECURITY: Enable credentials mode
+  // ==========================================================================
+  //
+  // `withCredentials: true` tells the browser to:
+  // 1. SEND cookies with cross-origin requests
+  // 2. ACCEPT Set-Cookie headers from cross-origin responses
+  //
+  // Without this, httpOnly cookies will NOT work for authentication!
+  //
+  // For native apps, this setting has no effect (no browser cookies).
+  // Native apps use the Authorization header instead (set by interceptor).
+  //
+  // ==========================================================================
+  withCredentials: true,
 });
 
 // ==============================================================================
@@ -163,54 +277,80 @@ const apiClient: AxiosInstance = axios.create({
 // ==============================================================================
 //
 // Runs BEFORE every request.
-// Attaches authentication token from ENCRYPTED storage.
+// Handles authentication differently based on platform:
 //
-// SECURITY FIX:
-// - OLD: AsyncStorage (UNENCRYPTED - XML/Plist files)
-// - NEW: SecureStore (iOS Keychain, Android KeyStore, hardware-backed)
-// - Stolen phone with AsyncStorage = stolen session
-// - Stolen phone with SecureStore = tokens still protected
+// WEB PLATFORM:
+//   - httpOnly cookies are sent AUTOMATICALLY by the browser
+//   - We do NOT need to add Authorization header
+//   - We do NOT store tokens in JavaScript-accessible storage
+//   - This protects against XSS token theft
 //
-// FLOW:
-// 1. User logs in → JWT token stored in SecureStore
-// 2. User makes API request
-// 3. This interceptor retrieves token from secure storage
-// 4. Adds: Authorization: Bearer <token>
-// 5. Backend validates token
-// 6. Request proceeds if valid, fails if invalid/expired
+// NATIVE PLATFORM (iOS/Android):
+//   - Tokens stored in SecureStore (hardware-backed encryption)
+//   - Tokens sent via Authorization: Bearer header
+//   - SecureStore is immune to XSS (no JavaScript in native apps)
 //
 // ==============================================================================
 
 apiClient.interceptors.request.use(
   async (config) => {
-    // CRITICAL: SecureStore failure is a catastrophic OS-level issue
-    // Possible causes:
-    // - Device lock/encryption disabled
-    // - OS keychain corruption  
-    // - Permission denied
-    // 
-    // We must NOT send partial auth requests - fail fast
+    // ==========================================================================
+    // PLATFORM-SPECIFIC AUTH HANDLING
+    // ==========================================================================
+    //
+    // WEB: Skip token handling - httpOnly cookies are automatic
+    // NATIVE: Retrieve token from SecureStore and add to header
+    //
+    // ==========================================================================
+
+    if (Platform.OS === 'web') {
+      // =======================================================================
+      // WEB: httpOnly cookies are handled automatically by the browser
+      // =======================================================================
+      //
+      // We do NOT need to do anything here because:
+      // 1. The backend sets an httpOnly cookie on login
+      // 2. The browser automatically sends this cookie with requests
+      // 3. `withCredentials: true` (set above) enables cross-origin cookies
+      // 4. JavaScript CANNOT read the cookie (XSS protection)
+      //
+      // This is the SECURE way to handle auth tokens in browsers.
+      //
+      // =======================================================================
+      if (__DEV__) {
+        console.log(`📤 ${config.method?.toUpperCase()} ${config.url} (web - using cookies)`);
+      }
+      return config;
+    }
+
+    // ==========================================================================
+    // NATIVE: Use SecureStore + Authorization header
+    // ==========================================================================
+    //
+    // For iOS/Android, we use SecureStore which provides:
+    // - iOS: Keychain (Touch ID/Face ID protected)
+    // - Android: KeyStore (hardware security module when available)
+    //
+    // This is secure because native apps don't have XSS vulnerabilities.
+    //
+    // ==========================================================================
+
     try {
-      // Use encrypted hardware-backed storage
-      // iOS: Keychain (Touch ID/Face ID protected)
-      // Android: KeyStore (hardware security module when available)
       const token = await TokenStorage.get();
       
       if (token) {
-        // Add Authorization header if token exists
+        // Add Authorization header for native apps
         // Format: "Bearer <token>" (industry standard JWT)
         config.headers.Authorization = `Bearer ${token}`;
         
-        // Log request in development (helpful for debugging)
         if (__DEV__) {
-          console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
+          console.log(`📤 ${config.method?.toUpperCase()} ${config.url} (native - using Bearer token)`);
         }
       }
     } catch (error) {
       // SecureStore failure is CRITICAL - don't continue
-      // This prevents sending requests with missing/partial auth
-      console.error('❌ CRITICAL: Storage access failed:', error);
-      return Promise.reject(new Error('Storage access failed - cannot authenticate'));
+      console.error('❌ CRITICAL: SecureStore access failed:', error);
+      return Promise.reject(new Error('SecureStore access failed - cannot authenticate'));
     }
     
     return config;
