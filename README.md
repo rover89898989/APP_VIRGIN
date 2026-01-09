@@ -79,6 +79,7 @@ cargo test           # Run tests (generates TypeScript types)
 
 ## 📚 Documentation
 
+- **`STATEMENT_OF_SOTA.md`** - Detailed rationale (“why”) for all architecture/security choices, with ASCII diagrams
 - **`BUILD_FILE.md`** - Complete architecture explanation, framework decisions, and ASCII diagrams
 - **`docs/`** - Original documentation archive (preserved verbatim)
   - `EXECUTIVE_SUMMARY.md` - Complete overview and audit results
@@ -118,6 +119,7 @@ cargo test           # Run tests (generates TypeScript types)
 
 ## 📞 Support
 
+- **SOTA Proof**: See `STATEMENT_OF_SOTA.md` for the full “why” behind the template (security posture, tradeoffs, and diagrams)
 - **Architecture**: See `BUILD_FILE.md` for complete system explanation
 - **Docs**: See `docs/` for detailed explanations
 - **Issues**: Check `EXECUTIVE_SUMMARY.md` for known fixes

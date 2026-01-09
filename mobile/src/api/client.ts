@@ -29,9 +29,50 @@ import axios, { AxiosInstance, AxiosError, AxiosRequestConfig } from 'axios';
 // AsyncStorage is UNENCRYPTED (XML file on Android, Plist on iOS)
 // SecureStore uses iOS Keychain and Android KeyStore (hardware-backed encryption)
 // Install: npx expo install expo-secure-store
-import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+type SecureStoreModule = typeof import('expo-secure-store');
+let secureStoreModule: SecureStoreModule | null = null;
+
+async function getSecureStore(): Promise<SecureStoreModule> {
+  if (secureStoreModule) return secureStoreModule;
+  const mod = await import('expo-secure-store');
+  secureStoreModule = mod;
+  return mod;
+}
+
+const TokenStorage = {
+  async get(): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem('access_token');
+    }
+
+    const SecureStore = await getSecureStore();
+    return await SecureStore.getItemAsync('access_token');
+  },
+
+  async set(token: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.setItem('access_token', token);
+      return;
+    }
+
+    const SecureStore = await getSecureStore();
+    await SecureStore.setItemAsync('access_token', token);
+  },
+
+  async delete(): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.removeItem('access_token');
+      return;
+    }
+
+    const SecureStore = await getSecureStore();
+    await SecureStore.deleteItemAsync('access_token');
+  },
+};
 
 // ==============================================================================
 // IMPORT AUTO-GENERATED TYPES FROM RUST
@@ -150,10 +191,10 @@ apiClient.interceptors.request.use(
     // 
     // We must NOT send partial auth requests - fail fast
     try {
-      // ✅ SECURITY FIX: Use encrypted hardware-backed storage
+      // Use encrypted hardware-backed storage
       // iOS: Keychain (Touch ID/Face ID protected)
       // Android: KeyStore (hardware security module when available)
-      const token = await SecureStore.getItemAsync('access_token');
+      const token = await TokenStorage.get();
       
       if (token) {
         // Add Authorization header if token exists
@@ -168,8 +209,8 @@ apiClient.interceptors.request.use(
     } catch (error) {
       // SecureStore failure is CRITICAL - don't continue
       // This prevents sending requests with missing/partial auth
-      console.error('❌ CRITICAL: Secure storage access failed:', error);
-      return Promise.reject(new Error('Secure storage access failed - cannot authenticate'));
+      console.error('❌ CRITICAL: Storage access failed:', error);
+      return Promise.reject(new Error('Storage access failed - cannot authenticate'));
     }
     
     return config;
@@ -226,8 +267,8 @@ apiClient.interceptors.response.use(
         case 401:
           // Unauthorized: Token expired or invalid
           // Clear token and redirect to login
-          // ✅ FIX: Use SecureStore instead of AsyncStorage
-          await SecureStore.deleteItemAsync('access_token');
+          // ✅ FIX: Platform-aware token deletion
+          await TokenStorage.delete();
           // TODO: Trigger navigation to login screen
           // navigationRef.current?.navigate('Login');
           break;
@@ -459,7 +500,7 @@ export const authApi = {
     // This ensures tokens are always stored securely and consistently
     // UI doesn't need to remember to store the token
     if (response.data.access_token) {
-      await SecureStore.setItemAsync('access_token', response.data.access_token);
+      await TokenStorage.set(response.data.access_token);
     }
     
     return response.data;
@@ -480,8 +521,8 @@ export const authApi = {
    */
   async logout() {
     await apiClient.post('/api/v1/auth/logout');
-    // ✅ FIX: Use SecureStore instead of AsyncStorage
-    await SecureStore.deleteItemAsync('access_token');
+    // ✅ FIX: Platform-aware token deletion
+    await TokenStorage.delete();
   },
 };
 
