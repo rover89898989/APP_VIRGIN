@@ -321,6 +321,29 @@ This is **immune to XSS** because:
 - **No localStorage/sessionStorage** for sensitive data
 - **Backwards compatible** with native apps (Bearer header still works)
 
+#### CSRF Protection
+
+Cross-Site Request Forgery (CSRF) is mitigated by our cookie configuration:
+
+```
+Set-Cookie: access_token=<token>; HttpOnly; SameSite=Lax; Path=/; Max-Age=3600
+```
+
+**`SameSite=Lax`** provides protection by:
+- Blocking cookies on cross-origin POST/PUT/DELETE requests
+- Only allowing cookies on same-site requests or top-level navigation GET
+- Preventing malicious sites from making authenticated requests
+
+**When to upgrade to CSRF tokens:**
+- If you need `SameSite=None` (third-party cookie scenarios)
+- If you support very old browsers without SameSite support
+- If your security audit specifically requires explicit CSRF tokens
+
+**Upgrade path** (if needed):
+1. Generate CSRF token on login, store in separate non-httpOnly cookie
+2. Frontend reads CSRF cookie, sends in `X-CSRF-Token` header
+3. Backend validates header matches cookie on state-changing requests
+
 ---
 
 ## 8) Operational safety and reliability
@@ -387,12 +410,36 @@ Over time, this reduces stale comment rot while keeping the “why” durable.
 
 ## 10) Known tradeoffs (explicitly acknowledged)
 
-- **Expo Web tokens**: localStorage is less secure than SecureStore.
-  - We mitigate via short TTL and re-login.
+- **Short-lived tokens only**: No refresh tokens by default.
+  - Users re-login after 1 hour (configurable in `ACCESS_TOKEN_MAX_AGE_SECONDS`)
+  - Reduces complexity and attack surface
+  - Upgrade path documented below
 - **Diesel synchronous**: requires `spawn_blocking` discipline.
   - We enforce via code patterns and examples.
 
-SOTA is not pretending these don’t exist; it documents them and contains them.
+SOTA is not pretending these don't exist; it documents them and contains them.
+
+### Refresh Token Upgrade Path
+
+If you need longer sessions without re-login, implement refresh tokens:
+
+**Backend changes:**
+1. Generate refresh token on login (longer TTL, e.g., 7 days)
+2. Store refresh token hash in database (for revocation)
+3. Add `/api/v1/auth/refresh` endpoint that:
+   - Validates refresh token
+   - Issues new access token
+   - Optionally rotates refresh token
+
+**Frontend changes:**
+1. Store refresh token in httpOnly cookie (separate from access token)
+2. On 401 response, call `/auth/refresh` before retrying
+3. If refresh fails, redirect to login
+
+**Security considerations:**
+- Refresh tokens should be rotated on each use
+- Store only hashed refresh tokens in database
+- Implement token revocation for logout/password change
 
 ---
 

@@ -8,7 +8,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "type-check": "tsc --noEmit",
-    "lint": "echo 'Lint not configured - add eslint/prettier if needed'"
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json}\""
   },
   "dependencies": {
     "@react-navigation/bottom-tabs": "^7.9.0",
@@ -32,6 +34,11 @@
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@types/react": "~19.1.0",
+    "eslint": "^8.57.0",
+    "eslint-config-expo": "^8.0.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "prettier": "^3.4.2",
     "typescript": "~5.9.2"
   },
   "private": true
