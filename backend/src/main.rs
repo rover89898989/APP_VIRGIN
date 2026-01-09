@@ -26,7 +26,7 @@ mod features;
 
 #[allow(unused_imports)] // Required for into_make_service_with_connect_info
 use axum::extract::ConnectInfo;
-use axum::http::Method;
+use axum::http::{header, Method};
 use axum::routing::get;
 use axum::Router;
 use std::net::SocketAddr;
@@ -36,7 +36,7 @@ use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 use tower_http::compression::CompressionLayer;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 
 pub type DbPool = db::DbPool;
 
@@ -108,9 +108,16 @@ async fn main() {
         // "https://yourapp.com".parse().unwrap(),
     ];
 
+    // Specify explicit headers (cannot use Any with credentials)
+    let allowed_headers = [
+        header::CONTENT_TYPE,
+        header::AUTHORIZATION,
+        header::ACCEPT,
+    ];
+
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers(Any)
+        .allow_headers(allowed_headers)
         .allow_origin(allowed_origins)
         // CRITICAL: This enables cookies to be sent cross-origin
         // Without this, the browser will NOT include cookies in requests

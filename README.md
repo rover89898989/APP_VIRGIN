@@ -70,7 +70,20 @@ npm run mobile:start # Expo Go (iOS/Android)
 
 ```bash
 npm run backend:check     # Rust compilation check
+npm run backend:test      # Run 15 backend tests
 npm run mobile:type-check # TypeScript validation
+```
+
+### Authentication Endpoints
+
+```bash
+# Login (sets httpOnly cookie for web)
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"test"}'
+
+# Logout (clears cookie)
+curl -X POST http://localhost:8000/api/v1/auth/logout
 ```
 
 ---
@@ -85,10 +98,11 @@ npm run mobile:type-check # TypeScript validation
 
 ### ✅ Security-Hardened
 
-- **Secure token storage** (`expo-secure-store`, hardware-backed)
-- **Rate limiting** (60 req/min per IP)
-- **JWT validation** (production-safe)
-- **Argon2 password hashing** (backend)
+- **XSS-Immune Web Auth** - httpOnly cookies for web (JavaScript cannot steal tokens)
+- **Secure Native Storage** - `expo-secure-store` for iOS/Android (hardware-backed)
+- **Rate limiting** - 50 req/sec per IP with burst protection
+- **CORS with credentials** - Prevents unauthorized cross-origin requests
+- **Platform-aware auth** - Different secure mechanisms for web vs native
 
 ### ✅ Production-Ready
 
@@ -101,7 +115,8 @@ npm run mobile:type-check # TypeScript validation
 
 ## 📚 Documentation
 
-- **`STATEMENT_OF_SOTA.md`** - Detailed rationale (“why”) for all architecture/security choices, with ASCII diagrams
+- **`examples/`** - Working examples demonstrating the template
+- **`STATEMENT_OF_SOTA.md`** - Detailed rationale ("why") for all architecture/security choices, with ASCII diagrams
 - **`BUILD_FILE.md`** - Complete architecture explanation, framework decisions, and ASCII diagrams
 - **`docs/`** - Original documentation archive (preserved verbatim)
   - `EXECUTIVE_SUMMARY.md` - Complete overview and audit results

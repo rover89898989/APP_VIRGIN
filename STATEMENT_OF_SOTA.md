@@ -264,24 +264,62 @@ That means:
   Client reads via hooks (no persistence by default)
 ```
 
-### Token storage policy (simple and explicit)
+### Token storage policy (XSS-immune by design)
 
-We choose a policy that is robust without building an auth platform:
+**UPDATE 2026-01-09**: We eliminated the XSS vulnerability in web token storage.
 
-- **Native (iOS/Android)**: tokens stored in **SecureStore** (hardware-backed where available)
-- **Web (desktop runtime)**: tokens stored in **localStorage**
-  - explicitly less secure than native
-  - mitigated by **short-lived tokens** + re-login on expiry
+#### The Problem with localStorage
 
-This is a deliberate tradeoff:
+The original approach stored tokens in `localStorage` for web:
+```javascript
+// ❌ VULNERABLE: Any XSS can steal this
+localStorage.setItem('access_token', token);
+```
 
-- avoids refresh-token complexity
-- reduces long-lived credential exposure on web
+If an attacker injects JavaScript (via XSS), they can:
+1. Read the token: `localStorage.getItem('access_token')`
+2. Send it to their server
+3. Impersonate the user indefinitely
 
-### Why this is acceptable under our stated constraints
+#### The Solution: httpOnly Cookies
 
-- Chat history and prescriptions are **server-source-of-truth**.
-- If a user must re-login on web after token expiry, they still recover all history.
+We now use **httpOnly cookies** for web authentication:
+
+```
+Set-Cookie: access_token=<token>; HttpOnly; SameSite=Lax; Path=/; Max-Age=3600
+```
+
+This is **immune to XSS** because:
+- `HttpOnly` flag prevents JavaScript from reading the cookie
+- Browser automatically sends cookie with requests
+- Even if XSS occurs, attacker cannot extract the token
+
+#### Platform-Specific Security
+
+| Platform | Storage | Security Level | XSS Risk |
+|----------|---------|----------------|----------|
+| **iOS** | Keychain (SecureStore) | Hardware-backed | None (no JS) |
+| **Android** | KeyStore (SecureStore) | Hardware-backed | None (no JS) |
+| **Web** | httpOnly Cookie | Browser-managed | **Immune** |
+
+#### Implementation Details
+
+**Backend** (`backend/src/api/auth.rs`):
+- `/api/v1/auth/login` - Sets httpOnly cookie
+- `/api/v1/auth/logout` - Clears cookie (Max-Age=0)
+- `extract_token_from_request()` - Checks cookie OR Bearer header
+
+**Frontend** (`mobile/src/api/client.ts`):
+- `withCredentials: true` on axios (sends cookies cross-origin)
+- `TokenStorage` returns null for web (tokens managed by browser)
+- Native apps still use SecureStore + Authorization header
+
+#### Why This is SOTA 2026
+
+- **Industry standard** for web authentication
+- **Zero JavaScript token access** eliminates entire attack class
+- **No localStorage/sessionStorage** for sensitive data
+- **Backwards compatible** with native apps (Bearer header still works)
 
 ---
 
