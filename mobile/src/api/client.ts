@@ -168,6 +168,7 @@ import { User } from './types/User';
 import { UserResponse } from './types/UserResponse';
 import { CreateUserRequest } from './types/CreateUserRequest';
 import { UpdateUserRequest } from './types/UpdateUserRequest';
+import type { DailyStreak, StreakCheckIn, StreakResponse } from './types/streak';
 
 // ==============================================================================
 // API CONFIGURATION
@@ -900,6 +901,38 @@ export function useDeleteUser() {
       queryClient.removeQueries({ queryKey: ['user', userId] });
       // Invalidate user list
       queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
+// ==============================================================================
+// STREAK API HOOKS (Sample Feature)
+// ==============================================================================
+
+const fetchStreak = async (): Promise<DailyStreak> => {
+  const response = await apiClient.get<DailyStreak>('/api/v1/streak');
+  return response.data;
+};
+
+export function useStreak() {
+  return useQuery({
+    queryKey: ['streak'],
+    queryFn: fetchStreak,
+    staleTime: 60 * 1000, // 1 minute - streaks update frequently
+    retry: 2,
+  });
+}
+
+export function useCheckIn() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (data: StreakCheckIn): Promise<StreakResponse> => {
+      const response = await apiClient.post<StreakResponse>('/api/v1/streak/checkin', data);
+      return response.data;
+    },
+    onSuccess: (response) => {
+      queryClient.setQueryData(['streak'], response.streak);
     },
   });
 }

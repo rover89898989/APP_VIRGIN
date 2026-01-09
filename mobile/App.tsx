@@ -1,121 +1,73 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, ActivityIndicator, Platform } from 'react-native';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { View, Text, StyleSheet } from 'react-native';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import axios from 'axios';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const queryClient = new QueryClient();
 
-function getApiBaseUrl(): string {
-  if (!__DEV__) {
-    return 'https://api.yourapp.com';
-  }
-  // Android Emulator uses 10.0.2.2 to reach host localhost
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:8000';
-  }
-  return 'http://localhost:8000';
-}
-
-const API_BASE_URL = getApiBaseUrl();
-
-function HealthCheck() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['health'],
-    queryFn: async () => {
-      const response = await axios.get(`${API_BASE_URL}/health/live`);
-      return response.data;
-    },
-    retry: false,
-  });
-
-  if (isLoading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.statusText}>Checking backend...</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorIcon}>⚠️</Text>
-        <Text style={styles.title}>Backend Offline</Text>
-        <Text style={styles.subtitle}>Start the backend with:</Text>
-        <Text style={styles.code}>npm run backend:run</Text>
-      </View>
-    );
-  }
-
+function SimpleDemo() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.successIcon}>✅</Text>
-      <Text style={styles.title}>Template Ready</Text>
-      <Text style={styles.subtitle}>Backend: {data?.status || 'connected'}</Text>
-      <Text style={styles.hint}>Replace this screen with your app</Text>
-    </View>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.emoji}>🔥</Text>
+        <Text style={styles.title}>12</Text>
+        <Text style={styles.subtitle}>Day Streak</Text>
+        <View style={styles.button}>
+          <Text style={styles.buttonText}>Check In Today</Text>
+        </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <SafeAreaProvider>
-        <SafeAreaView style={styles.safeArea}>
-          <HealthCheck />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider client={queryClient}>
+        <SafeAreaProvider>
+          <SimpleDemo />
           <StatusBar style="auto" />
-        </SafeAreaView>
-      </SafeAreaProvider>
-    </QueryClientProvider>
+        </SafeAreaProvider>
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  content: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
   },
+  emoji: {
+    fontSize: 80,
+    marginBottom: 16,
+  },
   title: {
-    fontSize: 24,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: 64,
+    fontWeight: 'bold',
+    color: '#6366F1',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 24,
     color: '#666',
-    marginBottom: 4,
+    marginBottom: 32,
   },
-  hint: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 20,
+  button: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 12,
   },
-  code: {
-    fontFamily: 'monospace',
-    backgroundColor: '#f5f5f5',
-    padding: 8,
-    borderRadius: 4,
-    marginTop: 8,
-  },
-  statusText: {
-    marginTop: 12,
-    color: '#666',
-  },
-  successIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  errorIcon: {
-    fontSize: 48,
-    marginBottom: 16,
+  buttonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
   },
 });
