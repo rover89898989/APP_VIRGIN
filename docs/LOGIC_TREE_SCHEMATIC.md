@@ -36,25 +36,25 @@
                                  └───────────────────┼──────────────────────┘
                                                      │
                                               REQUEST INTERCEPTOR
-                                                     │
-                                 ┌───────────────────▼──────────────────────┐
-                                 │   RETRIEVE TOKEN FROM SECURE STORAGE     │
-                                 │   (expo-secure-store)                    │
-                                 │                                          │
-                                 │   iOS: Keychain (Hardware Protected)     │
-                                 │   Android: KeyStore (Hardware Backed)    │
-                                 └───────────────────┬──────────────────────┘
-                                                     │
-                                         ┌───────────┴───────────┐
-                                         │                       │
-                                   Token Found            No Token
-                                         │                       │
-                                 Add Authorization         Continue
-                                   Header                Without Auth
-                                         │                       │
-                                         └───────────┬───────────┘
-                                                     │
-                                              HTTP REQUEST
+                                                    │
+                                        ┌───────────┴───────────┐
+                                        │                       │
+                                   WEB PLATFORM           NATIVE PLATFORM
+                                        │                       │
+                                ┌───────▼───────┐       ┌───────▼───────────┐
+                                │ httpOnly      │       │ RETRIEVE TOKEN    │
+                                │ COOKIES       │       │ FROM SECURESTORE  │
+                                │               │       │                   │
+                                │ Browser sends │       │ iOS: Keychain     │
+                                │ automatically │       │ Android: KeyStore │
+                                │ with request  │       │                   │
+                                │               │       │ Add Authorization │
+                                │ (XSS-immune)  │       │ Header if found   │
+                                └───────┬───────┘       └───────┬───────────┘
+                                        │                       │
+                                        └───────────┬───────────┘
+                                                    │
+                                             HTTP REQUEST
                                                      │
                                                      ▼
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -393,9 +393,15 @@
 │                     SECURITY LAYERS                              │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  1. TOKEN STORAGE (Mobile)                                       │
+│  1. TOKEN STORAGE (Platform-Aware, XSS-Immune)                   │
 │     ┌────────────────────────────────────────────────┐          │
-│     │  expo-secure-store                             │          │
+│     │  WEB: httpOnly Cookies                         │          │
+│     │  ├── Set by backend on login                   │          │
+│     │  ├── JavaScript CANNOT read (XSS-immune)       │          │
+│     │  ├── Browser sends automatically               │          │
+│     │  └── SameSite=Lax (CSRF protection)            │          │
+│     │                                                │          │
+│     │  NATIVE: expo-secure-store                     │          │
 │     │  ├── iOS: Keychain (Touch ID/Face ID)         │          │
 │     │  └── Android: KeyStore (Hardware Backed)      │          │
 │     └────────────────────────────────────────────────┘          │
