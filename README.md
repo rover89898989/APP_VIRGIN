@@ -11,44 +11,66 @@ A **robust, well-organized, reusable monorepo template** for building modern app
 ## 📁 Structure
 
 ```
-SKELETON_STARTER_v3/
-├── docs/                    # All documentation (preserved verbatim)
+APP_VIRGIN/
+├── docs/                    # Architecture documentation
 ├── mobile/                  # Expo React Native app
+│   ├── App.tsx              # Entry point with QueryClientProvider
 │   ├── src/
 │   │   └── api/
-│   │       ├── client.ts    # Type-safe API client (verbose comments)
+│   │       ├── client.ts    # Type-safe API client
 │   │       └── types/       # Auto-generated types from Rust
 │   └── package.json
-├── backend/                 # Rust Axum API (optional)
+├── backend/                 # Rust Axum API
 │   ├── src/
-│   │   ├── main.rs
+│   │   ├── main.rs          # Server entry point
+│   │   ├── config.rs        # Environment configuration
+│   │   ├── db.rs            # Database pool
+│   │   ├── api/             # HTTP handlers
+│   │   │   ├── mod.rs       # API error types
+│   │   │   └── health.rs    # Health check endpoints
 │   │   └── features/
-│   │       └── users/
-│   │           └── infrastructure/
-│   │               └── repository.rs
+│   │       └── users/       # User feature module
 │   └── Cargo.toml
-└── README.md               # This file
+├── package.json             # Monorepo scripts
+└── README.md
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### Mobile (Expo)
+### 1. Install Dependencies
 
 ```bash
-cd mobile
-npm install
-npm run start        # Start Expo dev server
-npm run type-check   # TypeScript validation
+# From project root
+cd mobile && npm install
 ```
 
-### Backend (Optional)
+### 2. Start Backend (Terminal 1)
 
 ```bash
-cd backend
-cargo check          # Verify compilation
-cargo test           # Run tests (generates TypeScript types)
+npm run backend:run
+# Backend starts at http://localhost:8000
+```
+
+### 3. Start Mobile (Terminal 2)
+
+```bash
+npm run mobile:web   # Web browser
+# OR
+npm run mobile:start # Expo Go (iOS/Android)
+```
+
+### 4. Verify
+
+- Mobile shows "Template Ready" with green checkmark
+- Backend health: `curl http://localhost:8000/health/live`
+
+### Validation Commands
+
+```bash
+npm run backend:check     # Rust compilation check
+npm run mobile:type-check # TypeScript validation
 ```
 
 ---

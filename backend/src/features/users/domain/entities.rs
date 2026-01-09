@@ -11,6 +11,13 @@ pub struct User {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
+pub struct UserResponse {
+    pub id: i64,
+    pub user: User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct CreateUserRequest {
     pub email: String,
     pub password: String,

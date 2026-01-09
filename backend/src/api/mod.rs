@@ -93,6 +93,7 @@ impl IntoResponse for ApiError {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/health/live", get(live))
-        .route("/health/ready", get(ready))
+    // Health routes are mounted at root level in main.rs
+    // Add feature routes here, e.g.:
+    // .nest("/users", users::routes())
 }
