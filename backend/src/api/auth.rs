@@ -286,6 +286,7 @@ fn build_auth_cookie(token: &str, clear: bool) -> String {
 /// 2. access_token cookie (web clients)
 /// 
 /// Returns None if no token is found.
+#[allow(dead_code)] // Will be used by auth middleware when protected routes are added
 pub fn extract_token_from_request(headers: &axum::http::HeaderMap) -> Option<String> {
     // ==========================================================================
     // CHECK AUTHORIZATION HEADER FIRST (Native clients)

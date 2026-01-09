@@ -24,6 +24,7 @@ mod config;
 mod db;
 mod features;
 
+#[allow(unused_imports)] // Required for into_make_service_with_connect_info
 use axum::extract::ConnectInfo;
 use axum::http::Method;
 use axum::routing::get;
@@ -115,6 +116,36 @@ async fn main() {
         // Without this, the browser will NOT include cookies in requests
         .allow_credentials(true);
 
+    // ==========================================================================
+    // RATE LIMITING CONFIGURATION
+    // ==========================================================================
+    //
+    // Protects the API from abuse and denial-of-service attacks.
+    //
+    // CONFIGURATION:
+    // - per_second(50): Allows 50 requests per second per IP
+    // - burst_size(100): Allows bursts of up to 100 requests
+    //
+    // CRITICAL REQUIREMENT:
+    // The rate limiter needs the client's IP address to work. This requires:
+    // 
+    //   app.into_make_service_with_connect_info::<SocketAddr>()
+    //
+    // instead of the usual:
+    //
+    //   app.into_make_service()
+    //
+    // Without this, you'll get "Unable To Extract Key!" errors because
+    // tower_governor cannot determine the client's IP address.
+    //
+    // This is configured at the bottom of this file in axum::serve().
+    //
+    // PRODUCTION NOTES:
+    // - If behind a reverse proxy, use SmartIpKeyExtractor instead
+    // - Adjust limits based on your traffic patterns
+    // - Consider different limits for different endpoints
+    //
+    // ==========================================================================
     let governor_conf = GovernorConfigBuilder::default()
         .per_second(50)
         .burst_size(100)

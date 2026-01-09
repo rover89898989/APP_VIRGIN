@@ -19,22 +19,20 @@
 
 ### P2: Code Quality
 
-- [ ] **3. Clean Up Unused Code Warnings**
-  - Repository stubs trigger 20+ warnings
-  - Prefix unused params with `_` or use `#[allow(dead_code)]`
-  - Impact: Noisy build output obscures real issues
+- [x] **3. Clean Up Unused Code Warnings** ✅
+  - Added `#[allow(dead_code)]` and `#[allow(unused_imports)]` to stub code
+  - Build is now warning-free
 
-- [ ] **4. Add .env.example File**
-  - Document expected environment variables
-  - `BACKEND_HOST`, `BACKEND_PORT`, `DATABASE_URL`, `DATABASE_REQUIRED`
-  - Impact: New devs don't know what to configure
+- [x] **4. Add .env.example File** ✅
+  - Created `backend/.env.example` with all environment variables documented
+  - Includes production notes for TLS, CORS, cookies
 
 ### P3: Documentation
 
-- [ ] **5. Document Rate Limiter Configuration**
-  - `into_make_service_with_connect_info::<SocketAddr>()` is required
-  - Not obvious from tower_governor docs
-  - Impact: We debugged this for 10+ minutes
+- [x] **5. Document Rate Limiter Configuration** ✅
+  - Added 30-line comment block in `backend/src/main.rs`
+  - Explains `into_make_service_with_connect_info::<SocketAddr>()` requirement
+  - Includes production notes for reverse proxy setup
 
 - [ ] **6. Add CONTRIBUTING.md**
   - How to run tests

@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+// These structs are used for TypeScript type generation via ts-rs.
+// They will be used by API handlers once the database schema is set up.
+#[allow(dead_code)]
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct User {
@@ -9,6 +13,7 @@ pub struct User {
     pub name: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct UserResponse {
@@ -16,6 +21,7 @@ pub struct UserResponse {
     pub user: User,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateUserRequest {
@@ -24,6 +30,7 @@ pub struct CreateUserRequest {
     pub name: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct UpdateUserRequest {
@@ -31,6 +38,7 @@ pub struct UpdateUserRequest {
     pub name: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserError {
     InvalidEmail,

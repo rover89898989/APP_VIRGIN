@@ -19,9 +19,12 @@
 // ==============================================================================
 
 use crate::DbPool;
+#[allow(unused_imports)]
 use crate::features::users::domain::entities::{User, CreateUserRequest, UpdateUserRequest, UserError};
 use crate::api::ApiError;
+#[allow(unused_imports)]
 use diesel::prelude::*;
+#[allow(unused_imports)]
 use axum::extract::State;
 
 // Import the generated schema
@@ -62,16 +65,17 @@ use axum::extract::State;
 ///     Ok(Json(user))
 /// }
 /// ```
+#[allow(dead_code)] // Stub - will be used when schema.rs exists
 pub async fn get_user_by_id(
     pool: DbPool,
-    user_id: i64,
+    _user_id: i64,
 ) -> Result<User, ApiError> {
     // ✅ CORRECT: Offload blocking work to thread pool
     // The async runtime continues handling other requests
     // while this query runs on a separate thread
     let user = tokio::task::spawn_blocking(move || {
         // Get connection from pool (blocking)
-        let mut conn = pool.get()
+        let _conn = pool.get()
             .map_err(|e| {
                 eprintln!("Failed to get DB connection: {}", e);
                 ApiError::InternalError("Database connection failed".to_string())
@@ -116,6 +120,7 @@ pub async fn get_user_by_id(
 /// # Returns
 /// * `Ok(User)` - Created user
 /// * `Err(ApiError)` - Validation error or database error
+#[allow(dead_code)] // Stub - will be used when schema.rs exists
 pub async fn create_user(
     pool: DbPool,
     data: CreateUserRequest,
@@ -128,7 +133,7 @@ pub async fn create_user(
     
     // ✅ CORRECT: Only the database work goes in spawn_blocking
     let user = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get()
+        let _conn = pool.get()
             .map_err(|e| {
                 eprintln!("Failed to get DB connection: {}", e);
                 ApiError::InternalError("Database connection failed".to_string())
@@ -173,9 +178,10 @@ pub async fn create_user(
 /// Update user
 ///
 /// PERFORMANCE FIX: Uses spawn_blocking for database update.
+#[allow(dead_code)] // Stub - will be used when schema.rs exists
 pub async fn update_user(
     pool: DbPool,
-    user_id: i64,
+    _user_id: i64,
     data: UpdateUserRequest,
 ) -> Result<User, ApiError> {
     // Validate email if provided
@@ -185,7 +191,7 @@ pub async fn update_user(
     }
     
     let user = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get()
+        let _conn = pool.get()
             .map_err(|e| {
                 eprintln!("Failed to get DB connection: {}", e);
                 ApiError::InternalError("Database connection failed".to_string())
@@ -221,12 +227,13 @@ pub async fn update_user(
 /// Delete user (soft delete)
 ///
 /// PERFORMANCE FIX: Uses spawn_blocking for database update.
+#[allow(dead_code)] // Stub - will be used when schema.rs exists
 pub async fn delete_user(
     pool: DbPool,
-    user_id: i64,
+    _user_id: i64,
 ) -> Result<(), ApiError> {
     tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get()
+        let _conn = pool.get()
             .map_err(|e| {
                 eprintln!("Failed to get DB connection: {}", e);
                 ApiError::InternalError("Database connection failed".to_string())
@@ -311,6 +318,7 @@ pub async fn delete_user(
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     // NOTE: These are examples - actual tests require database setup

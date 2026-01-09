@@ -1,6 +1,7 @@
 mod auth;
 mod health;
 
+#[allow(unused_imports)] // Will be used by auth middleware
 pub use auth::{login, logout, extract_token_from_request};
 pub use health::{live, ready};
 
@@ -8,6 +9,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
+#[allow(unused_imports)]
 use axum::routing::get;
 use axum::Router;
 
@@ -24,6 +26,7 @@ use crate::AppState;
 /// - mobile clients easier to implement
 /// - audits easier (HIPAA / PHI handling)
 /// - future maintenance safer
+#[allow(dead_code)] // Used by repository stubs - will be active when user routes are added
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
     #[error("bad request")]
