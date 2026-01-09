@@ -79,7 +79,7 @@ npm run type-check
 - **Never** store tokens in localStorage/sessionStorage
 - **Always** use httpOnly cookies for web auth
 - **Always** use SecureStore for native auth
-- **Never** log PHI or tokens
+- **Never** log sensitive data or tokens
 - **Always** validate input on backend
 
 ## Pull Request Process

@@ -5,7 +5,7 @@ This document is the **Statement of SOTA** for this template.
 It exists to:
 - **Prove** (in plain language) why these choices are robust, secure, and maintainable.
 - Explain the **principles** and **tradeoffs** that shape the template.
-- Provide a shared reference for audits and reviews (especially where **PHI/HIPAA** is involved).
+- Provide a shared reference for audits and reviews (especially where **sensitive user data** is involved).
 
 ---
 
@@ -22,7 +22,7 @@ SOTA here is not “trendy.” It is:
 
 - **Primary platforms**: Android + iOS.
 - **Secondary platforms**: Windows/macOS via **Expo Web** (browser runtime).
-- **Sensitive data**: eyeglass prescriptions are treated as **PHI**.
+- **Sensitive data**: private user information is treated with appropriate security measures.
 - **Template quality**: predictable, repeatable, boringly reliable.
 
 ---
@@ -161,7 +161,7 @@ Mutations are exposed as imperative functions (or mutation hooks), because they 
 - **Memory safety** without GC.
 - **Predictable performance**.
 - **Strong type system** that prevents entire classes of bugs.
-- Excellent fit for high-integrity code where PHI is involved.
+- Excellent fit for high-integrity code where sensitive data is involved.
 
 ### Why Axum
 
@@ -222,37 +222,37 @@ Health check design is part of SOTA because:
 
 ---
 
-## 7) HIPAA / PHI posture (security by construction)
+## 7) Sensitive data posture (security by construction)
 
-This template assumes that eyeglass prescriptions can be PHI.
+This template assumes that user data may be sensitive and requires protection.
 
 ### Core security principle
 
-**PHI must never be accidentally leaked by default.**
+**Sensitive data must never be accidentally leaked by default.**
 
 That means:
 
-- **No PHI in logs** (client or server).
-- **No PHI persisted client-side by default**.
+- **No sensitive data in logs** (client or server).
+- **No sensitive data persisted client-side by default**.
 - **Transport security** is mandatory in production.
 - **Explicit boundaries** for storage, network, and database.
 
 ### Data classification model
 
 - **Public**: app version, non-sensitive UI strings
-- **Sensitive**: account metadata
-- **PHI**: prescription values, medical/health-related notes, user identifiers associated with PHI
+- **Internal**: account metadata, preferences
+- **Sensitive**: private user information, personal data, credentials
 
-### PHI flow (ideal)
+### Sensitive data flow (ideal)
 
 ```
- User enters prescription
+ User enters private data
           │
           ▼
   Mobile UI state (in-memory)
           │
           ▼
-  POST /prescriptions  (TLS)
+  POST /api/v1/resource  (TLS)
           │
           ▼
   Backend validates + stores
@@ -363,7 +363,7 @@ We define a canonical `ApiError` contract:
 
 - stable status codes
 - JSON bodies
-- client-safe messages (no secrets, no PHI)
+- client-safe messages (no secrets, no sensitive data)
 
 This improves:
 
@@ -454,7 +454,7 @@ If you need longer sessions without re-login, implement refresh tokens:
 - Mobile app runs:
   - Android, iOS
   - Web runtime for Windows/macOS
-- No PHI appears in:
+- No sensitive data appears in:
   - logs
   - client persistent storage by default
 
@@ -464,7 +464,7 @@ If you need longer sessions without re-login, implement refresh tokens:
 
 - **Desktop packaging**: Electron/Tauri wrapper around Expo Web build.
 - **Long-lived sessions on web**: introduce refresh tokens via httpOnly cookies.
-- **Stronger DB crypto needs**: add envelope encryption for specific PHI columns.
+- **Stronger DB crypto needs**: add envelope encryption for specific sensitive columns.
 
 These are intentionally not defaults because they add complexity.
 
@@ -476,6 +476,6 @@ This template is designed to be the “best default” in 2026:
 
 - mobile-first
 - cross-platform dev ergonomics
-- secure handling assumptions for PHI/HIPAA
+- secure handling assumptions for sensitive user data
 - explicit, honest runtime health and configuration
 - maintainable patterns that prevent common failure modes

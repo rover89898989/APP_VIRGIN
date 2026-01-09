@@ -215,7 +215,7 @@ API → Domain → Infrastructure
 - ✅ Handling sensitive data
 - ✅ Public internet exposure
 - ✅ Payment processing (PCI-DSS compliant foundation)
-- ✅ Healthcare data (HIPAA-ready foundation)
+- ✅ Sensitive user data (security-first foundation)
 - ✅ Financial services (SOC 2 foundation)
 
 **Remaining Work** (P2-MEDIUM, optional):
