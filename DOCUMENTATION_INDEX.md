@@ -26,6 +26,13 @@
 10. **[backend/.env.example](backend/.env.example)** - Backend environment variables
 11. **[mobile/.env.example](mobile/.env.example)** - Mobile app configuration
 
+### 📚 Development Guides
+12. **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Complete testing strategy (backend, mobile, integration)
+13. **[DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md)** - Daily development workflow and best practices
+14. **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Production deployment strategies (Docker, AWS, Vercel)
+15. **[PERFORMANCE_GUIDE.md](PERFORMANCE_GUIDE.md)** - Performance optimization and monitoring
+16. **[PLATFORM_GUIDE.md](PLATFORM_GUIDE.md)** - Platform-specific issues and solutions
+
 ---
 
 ## 📊 Documentation Map by Use Case
@@ -33,19 +40,39 @@
 ### "I want to use this template for a new project"
 1. Read **[README.md](README.md)** - Understand what you're getting
 2. Follow **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Step-by-step setup
-3. Copy `.env.example` files and configure
-4. Start building!
+3. Read **[DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md)** - Daily workflow
+4. Copy `.env.example` files and configure
+5. Start building!
+
+### "I need to write tests"
+1. Read **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Complete testing strategy
+2. Run backend tests: `cd backend && cargo test`
+3. Run mobile tests: `cd mobile && npm test`
+4. Set up CI/CD testing
+
+### "I'm deploying to production"
+1. Read **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Complete deployment strategies
+2. Check **[PRODUCTION_REVIEW.md](PRODUCTION_REVIEW.md)** - Readiness checklist
+3. Review **[ARCHITECTURE_UPDATE.md](ARCHITECTURE_UPDATE.md)** - Deployment section
+4. Configure environment variables from `.env.example` files
+5. Follow production checklist in **[SETUP_GUIDE.md](SETUP_GUIDE.md)**
+
+### "I need to optimize performance"
+1. Read **[PERFORMANCE_GUIDE.md](PERFORMANCE_GUIDE.md)** - Optimization strategies
+2. Monitor bundle size and API response times
+3. Implement caching strategies
+4. Set up performance monitoring
+
+### "I'm having platform-specific issues"
+1. Read **[PLATFORM_GUIDE.md](PLATFORM_GUIDE.md)** - Platform solutions
+2. Check iOS vs Android differences
+3. Test on physical devices
+4. Review platform-specific APIs
 
 ### "I need to understand the security model"
 1. Read **[AUTHENTICATION_FLOW.md](AUTHENTICATION_FLOW.md)** - Visual diagrams
 2. Read **[STATEMENT_OF_SOTA_UPDATE.md](STATEMENT_OF_SOTA_UPDATE.md)** - Implementation details
 3. Review **[ARCHITECTURE_UPDATE.md](ARCHITECTURE_UPDATE.md)** - Security layers
-
-### "I'm deploying to production"
-1. Check **[PRODUCTION_REVIEW.md](PRODUCTION_REVIEW.md)** - Readiness checklist
-2. Review **[ARCHITECTURE_UPDATE.md](ARCHITECTURE_UPDATE.md)** - Deployment section
-3. Configure environment variables from `.env.example` files
-4. Follow production checklist in **[SETUP_GUIDE.md](SETUP_GUIDE.md)**
 
 ### "I found a bug or have questions"
 1. Check **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Troubleshooting section
