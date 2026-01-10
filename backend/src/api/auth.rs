@@ -31,13 +31,15 @@
 
 use axum::{
     extract::State,
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::env;
 
 use crate::AppState;
+use super::jwt::{generate_token_pair, generate_access_token, validate_refresh_token, TokenPair};
 
 // ==============================================================================
 // COOKIE CONFIGURATION
@@ -52,10 +54,22 @@ use crate::AppState;
 /// Using a prefix like `__Host-` would add additional security but requires HTTPS.
 const ACCESS_TOKEN_COOKIE_NAME: &str = "access_token";
 
-/// Cookie max age in seconds (1 hour).
+/// Cookie name for the refresh token.
+const REFRESH_TOKEN_COOKIE_NAME: &str = "refresh_token";
+
+/// Access token cookie max age in seconds (15 minutes).
 /// Short-lived tokens reduce the window of exposure if somehow compromised.
-/// Users will need to re-login after this time.
-const ACCESS_TOKEN_MAX_AGE_SECONDS: i64 = 3600;
+const ACCESS_TOKEN_MAX_AGE_SECONDS: i64 = 900; // 15 minutes
+
+/// Refresh token cookie max age in seconds (7 days).
+const REFRESH_TOKEN_MAX_AGE_SECONDS: i64 = 604800; // 7 days
+
+/// Check if we're running in production (requires Secure cookies)
+fn is_production() -> bool {
+    env::var("ENVIRONMENT")
+        .map(|v| v.to_lowercase() == "production" || v.to_lowercase() == "prod")
+        .unwrap_or(false)
+}
 
 // ==============================================================================
 // REQUEST/RESPONSE TYPES
@@ -74,20 +88,35 @@ pub struct LoginRequest {
 
 /// Login response payload.
 /// 
-/// NOTE: The actual token is NOT included in the response body for web clients.
-/// Instead, it's set as an httpOnly cookie that the browser manages automatically.
-/// 
-/// For native clients, we include the token in the response body because:
-/// - Native apps can't use cookies across app boundaries
-/// - Native apps use SecureStore which is hardware-backed and secure
+/// NOTE: For web clients, the access token is set as an httpOnly cookie.
+/// For native clients (detected via X-Client-Type header), tokens are in the body.
 #[derive(Debug, Serialize)]
 pub struct LoginResponse {
     pub success: bool,
     pub message: String,
-    /// Token is only populated for native clients (detected via User-Agent or header)
-    /// Web clients receive the token via httpOnly cookie instead
+    /// Access token - only populated for native clients
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
+    /// Refresh token - only populated for native clients
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+    /// Seconds until access token expires
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_in: Option<i64>,
+}
+
+/// Refresh token request payload
+#[derive(Debug, Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+/// Refresh token response payload
+#[derive(Debug, Serialize)]
+pub struct RefreshResponse {
+    pub success: bool,
+    pub access_token: String,
+    pub expires_in: i64,
 }
 
 // ==============================================================================
@@ -113,21 +142,12 @@ pub struct LoginResponse {
 
 pub async fn login(
     State(_state): State<AppState>,
+    headers: HeaderMap,
     Json(request): Json<LoginRequest>,
 ) -> Response {
     // ==========================================================================
-    // STUB IMPLEMENTATION
+    // INPUT VALIDATION
     // ==========================================================================
-    // In a real app, you would:
-    // 1. Look up the user by email in the database
-    // 2. Verify the password hash using argon2 or bcrypt
-    // 3. Generate a JWT or opaque token
-    // 4. Return the token via cookie (web) or body (native)
-    //
-    // For this template, we accept any login and return a dummy token.
-    // ==========================================================================
-
-    // Validate input (basic check - real app would do more)
     if request.email.is_empty() || request.password.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -135,46 +155,106 @@ pub async fn login(
                 success: false,
                 message: "Email and password are required".to_string(),
                 access_token: None,
+                refresh_token: None,
+                expires_in: None,
             }),
         )
             .into_response();
     }
 
-    // Generate a dummy token (in production, use a proper JWT library)
-    // This is just for demonstration - NEVER use this in production!
-    let token = format!("dummy_token_for_{}", request.email);
+    // ==========================================================================
+    // DATABASE LOOKUP & PASSWORD VERIFICATION
+    // ==========================================================================
+    // TODO: Replace with actual database lookup when migrations are complete
+    // 
+    // In production:
+    // 1. Look up user by email in database
+    // 2. Verify password against stored hash using password::verify_password()
+    // 3. Return 401 if user not found or password mismatch
+    //
+    // For now, we use a demo user for testing the JWT flow
+    // ==========================================================================
+    
+    let demo_user_id: i64 = 1;
+    let demo_email = &request.email;
+    
+    // TODO: Uncomment when database is ready
+    // let user = match get_user_by_email(&state.db_pool, &request.email).await {
+    //     Ok(u) => u,
+    //     Err(_) => return unauthorized_response("Invalid email or password"),
+    // };
+    // 
+    // if !password::verify_password(&request.password, &user.password_hash)? {
+    //     return unauthorized_response("Invalid email or password");
+    // }
 
     // ==========================================================================
-    // BUILD THE RESPONSE WITH httpOnly COOKIE
+    // GENERATE JWT TOKENS
     // ==========================================================================
-    //
-    // Cookie attributes explained:
-    //
-    // - HttpOnly: JavaScript CANNOT read this cookie (XSS protection)
-    // - Secure: Cookie only sent over HTTPS (enable in production)
-    // - SameSite=Lax: Protects against CSRF for most cases
-    // - Path=/: Cookie sent for all paths on this domain
-    // - Max-Age: Cookie expires after this many seconds
-    //
-    // ==========================================================================
-
-    let cookie_value = build_auth_cookie(&token, false);
-
-    let response_body = LoginResponse {
-        success: true,
-        message: "Login successful".to_string(),
-        // For web clients, token is in cookie, not body
-        // Native clients would check X-Client-Type header and get token in body
-        access_token: None,
+    let token_pair = match generate_token_pair(demo_user_id, demo_email) {
+        Ok(pair) => pair,
+        Err(e) => {
+            tracing::error!("Failed to generate tokens: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(LoginResponse {
+                    success: false,
+                    message: "Authentication failed".to_string(),
+                    access_token: None,
+                    refresh_token: None,
+                    expires_in: None,
+                }),
+            )
+                .into_response();
+        }
     };
 
-    // Build response with Set-Cookie header
-    (
-        StatusCode::OK,
-        [(header::SET_COOKIE, cookie_value)],
-        Json(response_body),
-    )
-        .into_response()
+    // ==========================================================================
+    // DETECT CLIENT TYPE (WEB vs NATIVE)
+    // ==========================================================================
+    let is_native_client = headers
+        .get("X-Client-Type")
+        .map(|v| v.to_str().unwrap_or("").to_lowercase() == "native")
+        .unwrap_or(false);
+
+    // ==========================================================================
+    // BUILD RESPONSE BASED ON CLIENT TYPE
+    // ==========================================================================
+    if is_native_client {
+        // Native clients: Return tokens in response body
+        // They will store in SecureStore (hardware-backed encryption)
+        (
+            StatusCode::OK,
+            Json(LoginResponse {
+                success: true,
+                message: "Login successful".to_string(),
+                access_token: Some(token_pair.access_token),
+                refresh_token: Some(token_pair.refresh_token),
+                expires_in: Some(token_pair.expires_in),
+            }),
+        )
+            .into_response()
+    } else {
+        // Web clients: Set httpOnly cookies (immune to XSS)
+        let access_cookie = build_auth_cookie(&token_pair.access_token, false);
+        let refresh_cookie = build_refresh_cookie(&token_pair.refresh_token, false);
+        
+        (
+            StatusCode::OK,
+            [
+                (header::SET_COOKIE, access_cookie),
+                (header::SET_COOKIE, refresh_cookie),
+            ],
+            Json(LoginResponse {
+                success: true,
+                message: "Login successful".to_string(),
+                access_token: None, // In cookie, not body
+                refresh_token: None, // In cookie, not body
+                expires_in: Some(token_pair.expires_in),
+            }),
+        )
+            .into_response()
+    }
 }
 
 // ==============================================================================
@@ -189,29 +269,164 @@ pub async fn login(
 // ==============================================================================
 
 pub async fn logout() -> Response {
-    // ==========================================================================
-    // CLEAR THE COOKIE
-    // ==========================================================================
-    //
-    // To delete a cookie, we set it with:
-    // - Empty value
-    // - Max-Age=0 (expire immediately)
-    //
-    // The browser will remove it from storage.
-    //
-    // ==========================================================================
-
-    let cookie_value = build_auth_cookie("", true);
+    // Clear both access and refresh cookies
+    let access_cookie = build_auth_cookie("", true);
+    let refresh_cookie = build_refresh_cookie("", true);
 
     (
         StatusCode::OK,
-        [(header::SET_COOKIE, cookie_value)],
+        [
+            (header::SET_COOKIE, access_cookie),
+            (header::SET_COOKIE, refresh_cookie),
+        ],
         Json(serde_json::json!({
             "success": true,
             "message": "Logged out successfully"
         })),
     )
         .into_response()
+}
+
+// ==============================================================================
+// REFRESH TOKEN ENDPOINT
+// ==============================================================================
+//
+// POST /api/v1/auth/refresh
+//
+// Uses the refresh token to obtain a new access token without re-authenticating.
+// This allows short-lived access tokens while maintaining user sessions.
+//
+// ==============================================================================
+
+pub async fn refresh(
+    headers: HeaderMap,
+    body: Option<Json<RefreshRequest>>,
+) -> Response {
+    // ==========================================================================
+    // EXTRACT REFRESH TOKEN
+    // ==========================================================================
+    // Check body first (native clients), then cookie (web clients)
+    
+    let refresh_token = if let Some(Json(req)) = body {
+        // Native client: token in request body
+        Some(req.refresh_token)
+    } else {
+        // Web client: token in cookie
+        extract_refresh_token_from_cookie(&headers)
+    };
+    
+    let refresh_token = match refresh_token {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                    "success": false,
+                    "message": "Refresh token required"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // ==========================================================================
+    // VALIDATE REFRESH TOKEN
+    // ==========================================================================
+    let claims = match validate_refresh_token(&refresh_token) {
+        Ok(c) => c,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                    "success": false,
+                    "message": "Invalid or expired refresh token"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // ==========================================================================
+    // GENERATE NEW ACCESS TOKEN
+    // ==========================================================================
+    let user_id = match claims.user_id() {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                    "success": false,
+                    "message": "Invalid token claims"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let new_access_token = match generate_access_token(user_id, &claims.email) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!("Failed to generate access token: {:?}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "success": false,
+                    "message": "Token generation failed"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // ==========================================================================
+    // DETECT CLIENT TYPE AND RESPOND
+    // ==========================================================================
+    let is_native_client = headers
+        .get("X-Client-Type")
+        .map(|v| v.to_str().unwrap_or("").to_lowercase() == "native")
+        .unwrap_or(false);
+
+    if is_native_client {
+        // Native: return token in body
+        (
+            StatusCode::OK,
+            Json(RefreshResponse {
+                success: true,
+                access_token: new_access_token,
+                expires_in: 900, // 15 minutes
+            }),
+        )
+            .into_response()
+    } else {
+        // Web: set new cookie
+        let cookie = build_auth_cookie(&new_access_token, false);
+        (
+            StatusCode::OK,
+            [(header::SET_COOKIE, cookie)],
+            Json(serde_json::json!({
+                "success": true,
+                "expires_in": 900
+            })),
+        )
+            .into_response()
+    }
+}
+
+/// Extract refresh token from cookie header
+fn extract_refresh_token_from_cookie(headers: &HeaderMap) -> Option<String> {
+    if let Some(cookie_header) = headers.get(header::COOKIE) {
+        if let Ok(cookies_str) = cookie_header.to_str() {
+            for cookie in cookies_str.split(';') {
+                let cookie = cookie.trim();
+                if let Some(value) = cookie.strip_prefix(&format!("{}=", REFRESH_TOKEN_COOKIE_NAME)) {
+                    if !value.is_empty() {
+                        return Some(value.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 // ==============================================================================
@@ -228,42 +443,34 @@ pub async fn logout() -> Response {
 /// - `HttpOnly`: Prevents JavaScript access (XSS protection)
 /// - `SameSite=Lax`: Prevents CSRF for most requests
 /// - `Path=/`: Cookie valid for all routes
-/// - `Secure`: Only send over HTTPS (commented out for local dev)
-///
-/// # Security Notes
-/// - In production, ALWAYS enable the Secure flag
-/// - Consider using `__Host-` prefix for additional security
-/// - SameSite=Strict would be more secure but breaks some OAuth flows
+/// - `Secure`: Only send over HTTPS (auto-enabled in production)
 fn build_auth_cookie(token: &str, clear: bool) -> String {
     let max_age = if clear { 0 } else { ACCESS_TOKEN_MAX_AGE_SECONDS };
-
-    // ==========================================================================
-    // COOKIE FORMAT
-    // ==========================================================================
-    //
-    // Format: name=value; attribute1; attribute2; ...
-    //
-    // We build this manually for clarity. In production, consider using
-    // a cookie library like `cookie` crate for proper escaping.
-    //
-    // ==========================================================================
+    let secure_flag = if is_production() { "; Secure" } else { "" };
 
     format!(
-        "{}={}; HttpOnly; SameSite=Lax; Path=/; Max-Age={}",
+        "{}={}; HttpOnly; SameSite=Lax; Path=/; Max-Age={}{}",
         ACCESS_TOKEN_COOKIE_NAME,
         token,
-        max_age
+        max_age,
+        secure_flag
     )
-    // ==========================================================================
-    // PRODUCTION NOTE: Add "; Secure" flag when deploying to HTTPS
-    // ==========================================================================
-    // In production, uncomment this to require HTTPS:
-    // format!(
-    //     "{}={}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={}",
-    //     ACCESS_TOKEN_COOKIE_NAME,
-    //     token,
-    //     max_age
-    // )
+}
+
+/// Builds the Set-Cookie header value for the refresh token.
+///
+/// Similar to access token but with longer expiry and restricted path.
+fn build_refresh_cookie(token: &str, clear: bool) -> String {
+    let max_age = if clear { 0 } else { REFRESH_TOKEN_MAX_AGE_SECONDS };
+    let secure_flag = if is_production() { "; Secure" } else { "" };
+
+    format!(
+        "{}={}; HttpOnly; SameSite=Lax; Path=/api/v1/auth; Max-Age={}{}",
+        REFRESH_TOKEN_COOKIE_NAME,
+        token,
+        max_age,
+        secure_flag
+    )
 }
 
 // ==============================================================================

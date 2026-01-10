@@ -23,6 +23,7 @@ mod api;
 mod config;
 mod db;
 mod features;
+mod schema;
 
 #[allow(unused_imports)] // Required for into_make_service_with_connect_info
 use axum::extract::ConnectInfo;
@@ -37,6 +38,7 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 
 pub type DbPool = db::DbPool;
 
@@ -84,86 +86,71 @@ async fn main() {
     // CORS CONFIGURATION FOR SECURE COOKIE-BASED AUTH
     // ==========================================================================
     //
-    // IMPORTANT: When using httpOnly cookies for authentication, we must:
-    // 1. Set `allow_credentials(true)` - allows cookies to be sent cross-origin
-    // 2. Specify exact origins - `Any` origin is NOT allowed with credentials
-    // 3. The frontend must use `withCredentials: true` on requests
-    //
-    // WHY NOT `Any` ORIGIN?
-    // - The browser security model forbids `Access-Control-Allow-Origin: *` 
-    //   when credentials (cookies) are involved
-    // - This prevents malicious sites from making authenticated requests
-    //
-    // DEVELOPMENT vs PRODUCTION:
-    // - Development: Allow localhost origins (multiple ports for Expo)
-    // - Production: Replace with your actual domain(s)
+    // Origins are configured via ALLOWED_ORIGINS environment variable.
+    // In production, this MUST be set to your actual domain(s).
+    // In development, defaults to localhost origins.
     //
     // ==========================================================================
-    let allowed_origins = [
-        "http://localhost:8081".parse().unwrap(),  // Expo web
-        "http://localhost:19006".parse().unwrap(), // Expo web (alt port)
-        "http://127.0.0.1:8081".parse().unwrap(),  // Expo web (IP)
-        "http://10.0.2.2:8081".parse().unwrap(),   // Android emulator
-        // Production: Add your domain here
-        // "https://yourapp.com".parse().unwrap(),
-    ];
+    let allowed_origins: Vec<axum::http::HeaderValue> = config
+        .allowed_origins
+        .iter()
+        .filter_map(|origin| origin.parse().ok())
+        .collect();
 
-    // Specify explicit headers (cannot use Any with credentials)
+    if allowed_origins.is_empty() {
+        eprintln!("Warning: No valid CORS origins configured");
+    }
+
     let allowed_headers = [
         header::CONTENT_TYPE,
         header::AUTHORIZATION,
         header::ACCEPT,
+        header::HeaderName::from_static("x-client-type"),
     ];
 
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(allowed_headers)
         .allow_origin(allowed_origins)
-        // CRITICAL: This enables cookies to be sent cross-origin
-        // Without this, the browser will NOT include cookies in requests
         .allow_credentials(true);
 
     // ==========================================================================
     // RATE LIMITING CONFIGURATION
     // ==========================================================================
     //
-    // Protects the API from abuse and denial-of-service attacks.
-    //
-    // CONFIGURATION:
-    // - per_second(50): Allows 50 requests per second per IP
-    // - burst_size(100): Allows bursts of up to 100 requests
-    //
-    // CRITICAL REQUIREMENT:
-    // The rate limiter needs the client's IP address to work. This requires:
-    // 
-    //   app.into_make_service_with_connect_info::<SocketAddr>()
-    //
-    // instead of the usual:
-    //
-    //   app.into_make_service()
-    //
-    // Without this, you'll get "Unable To Extract Key!" errors because
-    // tower_governor cannot determine the client's IP address.
-    //
-    // This is configured at the bottom of this file in axum::serve().
-    //
-    // PRODUCTION NOTES:
-    // - If behind a reverse proxy, use SmartIpKeyExtractor instead
-    // - Adjust limits based on your traffic patterns
-    // - Consider different limits for different endpoints
+    // Two rate limiters:
+    // 1. General API: 50 req/sec, burst 100 (for normal endpoints)
+    // 2. Auth endpoints: 5 req/min, burst 10 (prevent brute force)
     //
     // ==========================================================================
-    let governor_conf = GovernorConfigBuilder::default()
+    
+    // General rate limiter for most endpoints
+    let general_governor = GovernorConfigBuilder::default()
         .per_second(50)
         .burst_size(100)
         .finish()
-        .expect("governor config");
+        .expect("general governor config");
+
+    // Strict rate limiter for auth endpoints (prevent brute force)
+    let auth_governor = GovernorConfigBuilder::default()
+        .per_second(1) // 1 request per second sustained
+        .burst_size(5) // Allow burst of 5 attempts
+        .finish()
+        .expect("auth governor config");
+
+    // Auth routes with stricter rate limiting
+    let auth_routes = Router::new()
+        .route("/auth/login", axum::routing::post(api::login))
+        .route("/auth/logout", axum::routing::post(api::logout))
+        .route("/auth/refresh", axum::routing::post(api::refresh))
+        .layer(GovernorLayer::new(auth_governor));
 
     let app = Router::new()
-        .nest("/api/v1", api::routes())
+        .nest("/api/v1", api::routes().merge(auth_routes))
         .route("/health/live", get(api::live))
         .route("/health/ready", get(api::ready))
-        .layer(GovernorLayer::new(governor_conf))
+        .layer(TraceLayer::new_for_http()) // Request/response logging
+        .layer(GovernorLayer::new(general_governor))
         .layer(cors)
         .layer(ConcurrencyLimitLayer::new(256))
         .layer(CompressionLayer::new())
@@ -179,9 +166,43 @@ async fn main() {
 
     info!("backend listening on http://{}", config.addr());
 
+    // Graceful shutdown handling
+    let shutdown_signal = async {
+        let ctrl_c = async {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("failed to install Ctrl+C handler");
+        };
+
+        #[cfg(unix)]
+        let terminate = async {
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("failed to install signal handler")
+                .recv()
+                .await;
+        };
+
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
+        tokio::select! {
+            _ = ctrl_c => {
+                info!("Received Ctrl+C, starting graceful shutdown...");
+            },
+            _ = terminate => {
+                info!("Received SIGTERM, starting graceful shutdown...");
+            },
+        }
+    };
+
     // Use into_make_service_with_connect_info for rate limiter to extract peer IP
-    if let Err(err) = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await {
+    let server = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+        .with_graceful_shutdown(shutdown_signal);
+
+    if let Err(err) = server.await {
         eprintln!("Server error: {err}");
         std::process::exit(1);
     }
+
+    info!("Server shutdown complete");
 }

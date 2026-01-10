@@ -1,16 +1,33 @@
+use chrono::{DateTime, Utc};
+use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-// These structs are used for TypeScript type generation via ts-rs.
-// They will be used by API handlers once the database schema is set up.
-#[allow(dead_code)]
+use crate::schema::users;
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+/// User entity - maps to the `users` database table.
+/// 
+/// Derives:
+/// - Queryable: Can be queried from the database
+/// - Identifiable: Has an `id` field for lookups
+/// - Selectable: For type-safe column selection
+/// - TS: Generates TypeScript types
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Identifiable, Selectable, TS)]
+#[diesel(table_name = users)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 #[ts(export)]
 pub struct User {
     pub id: i64,
     pub email: String,
+    #[serde(skip_serializing)] // Never send password hash to client
+    #[ts(skip)]
+    pub password_hash: String,
     pub name: String,
+    pub is_active: bool,
+    #[ts(type = "string")]
+    pub created_at: DateTime<Utc>,
+    #[ts(type = "string")]
+    pub updated_at: DateTime<Utc>,
 }
 
 #[allow(dead_code)]

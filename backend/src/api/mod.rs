@@ -1,8 +1,11 @@
 mod auth;
+pub mod csrf;
 mod health;
+pub mod jwt;
+pub mod password;
 
 #[allow(unused_imports)] // Will be used by auth middleware
-pub use auth::{login, logout, extract_token_from_request};
+pub use auth::{login, logout, refresh, extract_token_from_request};
 pub use health::{live, ready};
 
 use axum::http::StatusCode;
@@ -97,20 +100,19 @@ impl IntoResponse for ApiError {
 }
 
 pub fn routes() -> Router<AppState> {
-    use axum::routing::post;
+    use axum::routing::{get, post};
+    use axum::middleware;
     
     Router::new()
         // ==========================================================================
-        // AUTHENTICATION ROUTES
+        // CSRF TOKEN ENDPOINT
         // ==========================================================================
-        //
-        // These routes handle login/logout with SECURE token delivery:
-        // - Web clients: Token set as httpOnly cookie (XSS-immune)
-        // - Native clients: Token in response body (stored in SecureStore)
-        //
+        .route("/csrf", get(csrf::get_csrf_token))
         // ==========================================================================
-        .route("/auth/login", post(login))
-        .route("/auth/logout", post(logout))
+        // CSRF PROTECTION MIDDLEWARE
+        // ==========================================================================
+        // Apply CSRF validation to all state-changing requests
+        .layer(middleware::from_fn(csrf::csrf_middleware))
     // Add feature routes here, e.g.:
     // .nest("/users", users::routes())
 }

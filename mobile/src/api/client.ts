@@ -60,87 +60,52 @@ async function getSecureStore(): Promise<SecureStoreModule> {
 // ==============================================================================
 
 const TokenStorage = {
-  // ===========================================================================
-  // GET TOKEN
-  // ===========================================================================
-  //
-  // For NATIVE only - web uses httpOnly cookies (automatic via browser)
-  //
-  // ===========================================================================
   async get(): Promise<string | null> {
     if (Platform.OS === 'web') {
-      // =======================================================================
-      // WEB: Do NOT use localStorage/sessionStorage for tokens!
-      // =======================================================================
-      //
-      // Tokens are stored in httpOnly cookies which:
-      // 1. Cannot be read by JavaScript (XSS protection)
-      // 2. Are automatically sent with requests by the browser
-      //
-      // This function returns null for web because we don't manage tokens here.
-      //
-      // =======================================================================
-      return null;
+      return null; // Web uses httpOnly cookies
     }
-
-    // NATIVE: Use SecureStore (hardware-backed encryption)
     const SecureStore = await getSecureStore();
     return await SecureStore.getItemAsync('access_token');
   },
 
-  // ===========================================================================
-  // SET TOKEN
-  // ===========================================================================
-  //
-  // For NATIVE only - web tokens are set by backend via Set-Cookie header
-  //
-  // ===========================================================================
   async set(token: string): Promise<void> {
     if (Platform.OS === 'web') {
-      // =======================================================================
-      // WEB: Tokens are set by the BACKEND via httpOnly cookie
-      // =======================================================================
-      //
-      // The backend's login endpoint returns a Set-Cookie header.
-      // The browser automatically stores this cookie.
-      // We do NOT need to do anything here.
-      //
-      // NEVER store tokens in localStorage/sessionStorage!
-      //
-      // =======================================================================
-      console.warn('TokenStorage.set() called on web - tokens should be set by backend cookie');
-      return;
+      return; // Web uses httpOnly cookies
     }
-
-    // NATIVE: Store in SecureStore
     const SecureStore = await getSecureStore();
     await SecureStore.setItemAsync('access_token', token);
   },
 
-  // ===========================================================================
-  // DELETE TOKEN
-  // ===========================================================================
-  //
-  // For NATIVE only - web logout is handled by backend clearing the cookie
-  //
-  // ===========================================================================
   async delete(): Promise<void> {
     if (Platform.OS === 'web') {
-      // =======================================================================
-      // WEB: Logout is handled by calling the backend logout endpoint
-      // =======================================================================
-      //
-      // The backend's logout endpoint returns a Set-Cookie header that
-      // clears the token cookie (Max-Age=0).
-      // We do NOT need to do anything here.
-      //
-      // =======================================================================
-      return;
+      return; // Web uses httpOnly cookies
     }
-
-    // NATIVE: Delete from SecureStore
     const SecureStore = await getSecureStore();
     await SecureStore.deleteItemAsync('access_token');
+  },
+
+  async getRefresh(): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      return null; // Web uses httpOnly cookies
+    }
+    const SecureStore = await getSecureStore();
+    return await SecureStore.getItemAsync('refresh_token');
+  },
+
+  async setRefresh(token: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      return; // Web uses httpOnly cookies
+    }
+    const SecureStore = await getSecureStore();
+    await SecureStore.setItemAsync('refresh_token', token);
+  },
+
+  async deleteRefresh(): Promise<void> {
+    if (Platform.OS === 'web') {
+      return; // Web uses httpOnly cookies
+    }
+    const SecureStore = await getSecureStore();
+    await SecureStore.deleteItemAsync('refresh_token');
   },
 };
 
@@ -381,21 +346,35 @@ apiClient.interceptors.request.use(
 //
 // ==============================================================================
 
+// Track if we're currently refreshing to prevent infinite loops
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (token: string | null) => void;
+  reject: (error: Error) => void;
+}> = [];
+
+const processQueue = (error: Error | null, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 apiClient.interceptors.response.use(
   (response) => {
-    // Success response (2xx status code)
-    // Log in development for debugging
     if (__DEV__) {
       console.log(`✅ ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
     }
-    
     return response;
   },
   async (error: AxiosError) => {
-    // Error response (4xx, 5xx status codes) or network error
+    const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
     
     if (error.response) {
-      // Server responded with error status code
       const status = error.response.status;
       const url = error.config?.url;
       
@@ -403,55 +382,99 @@ apiClient.interceptors.response.use(
         console.error(`❌ ${error.config?.method?.toUpperCase()} ${url} - ${status}`);
       }
       
-      // Handle specific error codes
-      switch (status) {
-        case 401:
-          // Unauthorized: Token expired or invalid
-          // Clear token and redirect to login
-          // ✅ FIX: Platform-aware token deletion
+      // Handle 401 with automatic token refresh
+      if (status === 401 && !originalRequest._retry) {
+        // Don't retry refresh endpoint itself
+        if (url?.includes('/auth/refresh') || url?.includes('/auth/login')) {
           await TokenStorage.delete();
-          // TODO: Trigger navigation to login screen
-          // navigationRef.current?.navigate('Login');
-          break;
+          await TokenStorage.deleteRefresh();
+          return Promise.reject(error);
+        }
+        
+        if (isRefreshing) {
+          // Queue this request while refresh is in progress
+          return new Promise((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          }).then((token) => {
+            if (token && originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+            }
+            return apiClient(originalRequest);
+          });
+        }
+        
+        originalRequest._retry = true;
+        isRefreshing = true;
+        
+        try {
+          // Import authApi dynamically to avoid circular dependency
+          const refreshToken = await TokenStorage.getRefresh();
           
+          if (!refreshToken && Platform.OS !== 'web') {
+            throw new Error('No refresh token available');
+          }
+          
+          // Call refresh endpoint directly to avoid interceptor loop
+          const refreshResponse = await axios.post(
+            `${apiClient.defaults.baseURL}/api/v1/auth/refresh`,
+            Platform.OS === 'web' ? {} : { refresh_token: refreshToken },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Client-Type': Platform.OS === 'web' ? 'web' : 'native',
+              },
+              withCredentials: true,
+            }
+          );
+          
+          const newToken = refreshResponse.data.access_token;
+          
+          if (newToken) {
+            await TokenStorage.set(newToken);
+            processQueue(null, newToken);
+            
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            }
+            return apiClient(originalRequest);
+          }
+          
+          throw new Error('No token in refresh response');
+        } catch (refreshError) {
+          processQueue(refreshError as Error, null);
+          await TokenStorage.delete();
+          await TokenStorage.deleteRefresh();
+          // TODO: Navigate to login screen
+          return Promise.reject(refreshError);
+        } finally {
+          isRefreshing = false;
+        }
+      }
+      
+      // Handle other error codes
+      switch (status) {
         case 403:
-          // Forbidden: User doesn't have permission
-          // Show error message
           console.error('Permission denied');
           break;
-          
         case 404:
-          // Not Found: Resource doesn't exist
-          // Could be: user deleted, URL typo, etc.
           console.error('Resource not found');
           break;
-          
         case 422:
-          // Validation Error: Invalid input
-          // Backend returned validation errors (email format, etc.)
           console.error('Validation error:', error.response.data);
           break;
-          
         case 500:
         case 502:
         case 503:
-          // Server Error: Backend crashed or unavailable
-          // Show friendly error message to user
           console.error('Server error, please try again later');
           break;
       }
     } else if (error.request) {
-      // Request made but no response received
-      // Causes: No internet, server down, timeout
       console.error('Network error: No response from server');
-      console.error('Check internet connection or server status');
     } else {
-      // Error setting up request (rare)
       console.error('Request setup error:', error.message);
     }
     
     // Re-throw error for component to handle
-    // Component can show user-friendly error message
     return Promise.reject(error);
   }
 );
@@ -613,57 +636,74 @@ export const authApi = {
    * @param password - User's password
    * @returns Promise<LoginResponse> - JWT tokens and user data
    * @throws AxiosError if credentials invalid (401)
-   * 
-   * Flow:
-   * 1. Send email + password to backend
-   * 2. Backend validates credentials
-   * 3. Backend returns JWT access token + refresh token
-   * 4. Token automatically stored in SecureStore (hardware-backed)
-   * 5. Future requests use token in Authorization header
-   * 
-   * Example:
-   * ```typescript
-   * const { access_token, user } = await authApi.login(
-   *   'user@example.com',
-   *   'password123'
-   * );
-   * // Token already stored in SecureStore - no manual storage needed!
-   * // Navigate to home screen
-   * ```
    */
   async login(email: string, password: string) {
     const response = await apiClient.post('/api/v1/auth/login', {
       email,
       password,
+    }, {
+      headers: {
+        'X-Client-Type': Platform.OS === 'web' ? 'web' : 'native',
+      },
     });
     
-    // ✅ FIX: Automatically store token in SecureStore
-    // This ensures tokens are always stored securely and consistently
-    // UI doesn't need to remember to store the token
-    if (response.data.access_token) {
-      await TokenStorage.set(response.data.access_token);
+    // Store tokens in SecureStore for native clients
+    if (Platform.OS !== 'web') {
+      if (response.data.access_token) {
+        await TokenStorage.set(response.data.access_token);
+      }
+      if (response.data.refresh_token) {
+        await TokenStorage.setRefresh(response.data.refresh_token);
+      }
     }
     
     return response.data;
   },
 
   /**
-   * Logout
-   * 
-   * Clears tokens and invalidates session on backend.
-   * Token automatically deleted from SecureStore.
-   * 
-   * Example:
-   * ```typescript
-   * await authApi.logout();
-   * // Token already deleted from SecureStore
-   * navigationRef.current?.navigate('Login');
-   * ```
+   * Refresh the access token using the refresh token.
+   * Called automatically by the 401 interceptor.
+   */
+  async refresh(): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      // Web: refresh token is in httpOnly cookie, just call the endpoint
+      const response = await apiClient.post('/api/v1/auth/refresh');
+      return response.data.access_token || null;
+    }
+    
+    // Native: send refresh token in body
+    const refreshToken = await TokenStorage.getRefresh();
+    if (!refreshToken) {
+      return null;
+    }
+    
+    const response = await apiClient.post('/api/v1/auth/refresh', {
+      refresh_token: refreshToken,
+    }, {
+      headers: {
+        'X-Client-Type': 'native',
+      },
+    });
+    
+    if (response.data.access_token) {
+      await TokenStorage.set(response.data.access_token);
+      return response.data.access_token;
+    }
+    
+    return null;
+  },
+
+  /**
+   * Logout - clears tokens and invalidates session.
    */
   async logout() {
-    await apiClient.post('/api/v1/auth/logout');
-    // ✅ FIX: Platform-aware token deletion
+    try {
+      await apiClient.post('/api/v1/auth/logout');
+    } catch {
+      // Ignore errors - we're logging out anyway
+    }
     await TokenStorage.delete();
+    await TokenStorage.deleteRefresh();
   },
 };
 

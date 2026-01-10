@@ -3,8 +3,22 @@ import { View, Text, StyleSheet } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ErrorBoundary } from './src/shared/ErrorBoundary';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes - reduce refetches on mobile
+      gcTime: 30 * 60 * 1000, // 30 minutes cache time (formerly cacheTime)
+      retry: 2, // Retry failed requests twice
+      refetchOnWindowFocus: false, // Don't refetch when app comes to foreground
+      refetchOnReconnect: true, // Do refetch when network reconnects
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 
 function SimpleDemo() {
   return (
@@ -23,14 +37,16 @@ function SimpleDemo() {
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider>
-          <SimpleDemo />
-          <StatusBar style="auto" />
-        </SafeAreaProvider>
-      </QueryClientProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <QueryClientProvider client={queryClient}>
+          <SafeAreaProvider>
+            <SimpleDemo />
+            <StatusBar style="auto" />
+          </SafeAreaProvider>
+        </QueryClientProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }
 

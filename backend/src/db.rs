@@ -12,12 +12,38 @@ pub type DbPool = Pool<ConnectionManager<PgConnection>>;
 
 /// Create a Diesel connection pool.
 ///
+/// CONFIGURATION (via env vars):
+/// - DB_POOL_MAX_SIZE: Maximum connections (default: 20)
+/// - DB_POOL_MIN_IDLE: Minimum idle connections (default: 5)
+/// - DB_POOL_CONNECTION_TIMEOUT: Connection timeout in seconds (default: 30)
+///
 /// FAILURE MODES:
 /// - Returns an error string suitable for a startup failure.
 pub fn create_pool(database_url: &str) -> Result<DbPool, String> {
+    use std::env;
+    use std::time::Duration;
+    
+    let max_size = env::var("DB_POOL_MAX_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(20);
+    
+    let min_idle = env::var("DB_POOL_MIN_IDLE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5);
+    
+    let connection_timeout = env::var("DB_POOL_CONNECTION_TIMEOUT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30);
+    
     let manager = ConnectionManager::<PgConnection>::new(database_url);
 
     Pool::builder()
+        .max_size(max_size)
+        .min_idle(Some(min_idle))
+        .connection_timeout(Duration::from_secs(connection_timeout))
         .build(manager)
         .map_err(|e| format!("failed to create database pool: {e}"))
 }
