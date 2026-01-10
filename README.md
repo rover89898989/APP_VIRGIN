@@ -171,6 +171,7 @@ curl -X POST http://localhost:8000/api/v1/auth/logout
 - **`STATEMENT_OF_SOTA.md`** - Security architecture, threat models, ASCII diagrams
 - **`BUILD_FILE.md`** - System design, framework decisions, data flow diagrams
 - **`LOGIC_TREE_SCHEMATIC.md`** - Request flow, authentication sequences
+ - **`INFRASTRUCTURE_AND_SCALING_GUIDE.md`** - Service selection, scaling decision trees, migration paths
 
 ### Reference
 - **`examples/`** - Working code examples
@@ -178,6 +179,7 @@ curl -X POST http://localhost:8000/api/v1/auth/logout
   - `EXECUTIVE_SUMMARY.md` - Audit results
   - `GEMINI_CRITICAL_FIXES.md` - Security fixes applied
   - `GEMINI_FINAL_FIXES.md` - Additional improvements
+- **`FUTURE_IMPROVEMENTS_PARETO.md`** - High-impact feature roadmap (Shopify, OAuth, WebSockets, Images)
 
 ---
 

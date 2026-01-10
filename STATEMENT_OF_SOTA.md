@@ -7,6 +7,10 @@ It exists to:
 - Explain the **principles** and **tradeoffs** that shape the template.
 - Provide a shared reference for audits and reviews (especially where **sensitive user data** is involved).
 
+Related document:
+- `INFRASTRUCTURE_AND_SCALING_GUIDE.md` (service selection, scaling decision trees, migration paths)
+- `FUTURE_IMPROVEMENTS_PARETO.md` (high-impact feature roadmap: Shopify, OAuth, WebSockets, Images)
+
 ---
 
 ## 1) What “SOTA 2026” means for this template
